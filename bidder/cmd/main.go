@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	bidder "github.com/mridul-sahu/greedy_auction/bidder/src"
+	"github.com/sirupsen/logrus"
 
 	"github.com/jessevdk/go-flags"
 )
@@ -23,9 +24,13 @@ type Options struct {
 func main() {
 	var opts Options
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
-		panic(err.Error())
+		logrus.WithError(err).Fatalln("Could not parse input flags")
 	}
-	bidderController, err := bidder.NewBidder(opts.RegisterAt, fmt.Sprintf("http://%s:%d/v1/bid", opts.Host, opts.Port), time.Duration(opts.Delay)*time.Millisecond)
+	bidderController, err := bidder.NewBidder(
+		opts.RegisterAt,
+		fmt.Sprintf("http://%s:%d/v1/bid", opts.Host, opts.Port),
+		time.Duration(opts.Delay)*time.Millisecond,
+		logrus.StandardLogger())
 	if err != nil {
 		panic(err.Error())
 	}
@@ -34,6 +39,6 @@ func main() {
 
 	allowedMethods := handlers.AllowedMethods([]string{"POST"})
 	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", opts.Host, opts.Port), handlers.CORS(allowedMethods)(r)); err != nil {
-		panic(err.Error())
+		logrus.WithError(err).Fatalln("ListenAndServe Failed")
 	}
 }

@@ -25,28 +25,34 @@ type Bidder struct {
 }
 
 func (b *Bidder) BidHandler() http.Handler {
+	bidHandlerLogger := b.logger.WithField("operation", "bid-handler")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auctionRequest := models.AuctionRequest{}
 
 		if err := valueFromBody(r.Body, &auctionRequest); err != nil {
+			bidHandlerLogger.WithError(err).Errorln("Invalid Request")
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
+		bidHandlerLogger.Debugf("Delaying Bid by %d milliseconds\n", b.responseDelay.Milliseconds())
 		time.Sleep(b.responseDelay)
 
+		bid := rand.Float64() * 10000
 		resp, err := json.Marshal(&models.AuctionResponse{
 			BidderID: b.id,
-			Price:    rand.Float64() * 10000,
+			Price:    bid,
 		})
 		if err != nil {
 			// Shouldn't happen, but just in case something goes wrong.
+			bidHandlerLogger.WithError(err).Errorln("Error Marshalling AuctionResponse to JSON")
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
 		w.Write(resp)
+		bidHandlerLogger.WithField("bid", bid).Infoln("Bid Sent")
 	})
 }
 
