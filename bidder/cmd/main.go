@@ -26,6 +26,7 @@ func main() {
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
 		logrus.WithError(err).Fatalln("Could not parse input flags")
 	}
+	logrus.Infof("Running With Host:%s, Port: %d, Delay: %d, RegisterAt: %s\n", opts.Host, opts.Port, opts.Delay, opts.RegisterAt)
 	bidderController, err := bidder.NewBidder(
 		opts.RegisterAt,
 		fmt.Sprintf("http://%s:%d/v1/bid", opts.Host, opts.Port),

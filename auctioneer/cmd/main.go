@@ -25,6 +25,9 @@ func main() {
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
 		logrus.WithError(err).Fatalln("Could not parse input flags")
 	}
+
+	logrus.Infof("Running With Host:%s, Port: %d, MaxDelay: %d\n", opts.Host, opts.Port, opts.MaxDelay)
+
 	auctionController := auctioneer.NewAcutioneer(time.Duration(opts.MaxDelay)*time.Millisecond, logrus.StandardLogger())
 	r := mux.NewRouter()
 	r.Handle("/v1/bid", auctionController.BidHandler()).Methods("POST")
