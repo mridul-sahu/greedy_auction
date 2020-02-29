@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -24,7 +25,7 @@ func main() {
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
 		logrus.WithError(err).Fatalln("Could not parse input flags")
 	}
-	auctionController := auctioneer.Auctioneer{}
+	auctionController := auctioneer.NewAcutioneer(time.Duration(opts.MaxDelay)*time.Millisecond, logrus.StandardLogger())
 	r := mux.NewRouter()
 	r.Handle("/v1/bid", auctionController.BidHandler()).Methods("POST")
 	r.Handle("/v1/bidders", auctionController.ListHandler()).Methods("GET")
