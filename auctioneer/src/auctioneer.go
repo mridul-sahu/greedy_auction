@@ -121,7 +121,7 @@ func (ac *Auctioneer) BidHandler() http.Handler {
 
 		auctionLogger := bidHandlerLogger.WithField("auction_id", auctionRequest.AuctionID)
 		auctionLogger.Debugln("Getting Bids")
-		bidderID, bid := ac.GetMaxBid(r.Context(), &auctionRequest, ac.allowedResponseDelay)
+		bidderID, bid := ac.getMaxBid(r.Context(), &auctionRequest, ac.allowedResponseDelay)
 		if bid == -1 || bidderID == "" {
 			auctionLogger.WithField("event", "no-response").Infoln("No Bids Found")
 			w.WriteHeader(http.StatusNoContent)
@@ -146,7 +146,7 @@ func (ac *Auctioneer) BidHandler() http.Handler {
 }
 
 // Promises to return at timeout with the best possible bid found
-func (ac *Auctioneer) GetMaxBid(ctxt context.Context, auctionRequest *models.AuctionRequest, timeout time.Duration) (string, float64) {
+func (ac *Auctioneer) getMaxBid(ctxt context.Context, auctionRequest *models.AuctionRequest, timeout time.Duration) (string, float64) {
 	bidLogger := ac.logger.WithField("operation", "get-max-bid").WithField("auction_id", auctionRequest.AuctionID)
 
 	bidderID := ""
@@ -155,7 +155,7 @@ func (ac *Auctioneer) GetMaxBid(ctxt context.Context, auctionRequest *models.Auc
 
 	timeoutChan := time.After(timeout)
 	bidsContext, cancel := context.WithCancel(ctxt)
-	bidsChan := ac.GetBids(bidsContext, auctionRequest)
+	bidsChan := ac.getBids(bidsContext, auctionRequest)
 	for {
 		select {
 		case <-timeoutChan:
@@ -174,7 +174,7 @@ func (ac *Auctioneer) GetMaxBid(ctxt context.Context, auctionRequest *models.Auc
 	}
 }
 
-func (ac *Auctioneer) GetBids(ctxt context.Context, auctionRequest *models.AuctionRequest) <-chan *models.AuctionResponse {
+func (ac *Auctioneer) getBids(ctxt context.Context, auctionRequest *models.AuctionRequest) <-chan *models.AuctionResponse {
 	getBidsLogger := ac.logger.WithField("operation", "get-bids").WithField("auction_id", auctionRequest.AuctionID)
 
 	// Maybe some other buffer size based on requirements
@@ -184,21 +184,18 @@ func (ac *Auctioneer) GetBids(ctxt context.Context, auctionRequest *models.Aucti
 	go func(bidsChan chan<- *models.AuctionResponse) {
 		ac.activeBiddersLock.RLock()
 		getBidsLogger.Traceln("Got Active Bidders Read Lock")
-		n := len(ac.activeBidders)
-
-		if n == 0 {
-			getBidsLogger.WithField("event", "no-bidders").Debugln("No bidders Found")
-			ac.activeBiddersLock.RUnlock()
-			getBidsLogger.Traceln("Active Bidders Read Unlock")
-			return
-		}
-
-		bidders := make(map[string]string, n)
+		bidders := make(map[string]string)
 		for bidderID, endpoint := range ac.activeBidders {
 			bidders[bidderID] = endpoint
 		}
 		ac.activeBiddersLock.RUnlock()
 		getBidsLogger.Traceln("Active Bidders Read Unlock")
+
+		if len(bidders) == 0 {
+			getBidsLogger.WithField("event", "no-bidders").Debugln("No bidders Found")
+			getBidsLogger.Traceln("Active Bidders Read Unlock")
+			return
+		}
 
 		auctionRequestBytes, err := json.Marshal(auctionRequest)
 		if err != nil {
@@ -214,29 +211,14 @@ func (ac *Auctioneer) GetBids(ctxt context.Context, auctionRequest *models.Aucti
 			go func(bidderEndpoint string) {
 				bidderLogger := getBidsLogger.WithField("bidder_endpoint", bidderEndpoint)
 
-				request, err := http.NewRequestWithContext(ctxt, "POST", bidderEndpoint, bytes.NewBuffer(auctionRequestBytes))
+				auctionResponse, err := ac.getAuctionResponse(ctxt, bidderEndpoint, auctionRequestBytes)
 				if err != nil {
-					// Shouldn't happen normally, something is wrong.
-					bidderLogger.WithError(err).Errorln("Error Forming Request")
-					return
-				}
-
-				bidderLogger.Traceln("Sending Request")
-				resp, err := ac.client.Do(request)
-				if err != nil {
-					bidderLogger.WithError(err).Errorln("Error Requesting Bid")
-					return
-				}
-				defer resp.Body.Close()
-
-				var auctionResonse *models.AuctionResponse
-				if err := valueFromBody(resp.Body, &auctionResonse); err != nil {
-					bidderLogger.WithError(err).Errorln("Invalid Response")
+					bidderLogger.WithError(err).Errorln("Bid Request Failed")
 					return
 				}
 				// If the context is still valid, try sending bid to be considered
 				select {
-				case bidsChan <- auctionResonse:
+				case bidsChan <- auctionResponse:
 					bidderLogger.Traceln("Sent Response")
 				case <-ctxt.Done():
 					bidderLogger.Traceln("Context Cancelled")
@@ -247,6 +229,27 @@ func (ac *Auctioneer) GetBids(ctxt context.Context, auctionRequest *models.Aucti
 	}(bidsChan)
 
 	return bidsChan
+}
+
+func (ac *Auctioneer) getAuctionResponse(ctxt context.Context, bidderEndpoint string, auctionRequestBytes []byte) (*models.AuctionResponse, error) {
+	request, err := http.NewRequestWithContext(ctxt, "POST", bidderEndpoint, bytes.NewBuffer(auctionRequestBytes))
+	if err != nil {
+		// Shouldn't happen normally, something is wrong.
+		return nil, err
+	}
+
+	resp, err := ac.client.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var auctionResonse models.AuctionResponse
+	if err := valueFromBody(resp.Body, &auctionResonse); err != nil {
+		return nil, err
+	}
+
+	return &auctionResonse, nil
 }
 
 func NewAcutioneer(allowedResponseDelay time.Duration, logger *logrus.Logger) *Auctioneer {
