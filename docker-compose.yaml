@@ -1,0 +1,30 @@
+version: "3.7"
+services:
+  auctioneer:
+    build:
+      context: .
+      dockerfile: auctioneer.dockerfile
+    command: "--port 8000 --max-delay 200 --host 0.0.0.0"
+    ports:
+      - "8000:8000"
+  bidder-one:
+    build:
+      context: .
+      dockerfile: bidder.dockerfile
+    command: "--host bidder-one --port 8001 --delay 10 --register-at http://auctioneer:8000/v1/register"
+    ports:
+      - "8001:8001"
+  bidder-two:
+    build:
+      context: .
+      dockerfile: bidder.dockerfile
+    command: "--host bidder-two --port 8002 --delay 20 --register-at http://auctioneer:8000/v1/register"
+    ports:
+      - "8002:8002"
+  bidder-three:
+    build:
+      context: .
+      dockerfile: bidder.dockerfile
+    command: "--host bidder-three --port 8003 --delay 30 --register-at http://auctioneer:8000/v1/register"
+    ports:
+      - "8003:8003"
