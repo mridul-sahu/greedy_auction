@@ -32,7 +32,7 @@ func main() {
 		time.Duration(opts.Delay)*time.Millisecond,
 		logrus.StandardLogger())
 	if err != nil {
-		panic(err.Error())
+		logrus.WithError(err).Fatalln("NewBidder Failed")
 	}
 	r := mux.NewRouter()
 	r.Handle("/v1/bid", bidderController.BidHandler()).Methods("POST")
