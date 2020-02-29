@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -24,7 +25,10 @@ func main() {
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
 		panic(err.Error())
 	}
-	bidderController := bidder.Bidder{}
+	bidderController, err := bidder.NewBidder(opts.RegisterAt, fmt.Sprintf("http://%s:%d/v1/bid", opts.Host, opts.Port), time.Duration(opts.Delay)*time.Millisecond)
+	if err != nil {
+		panic(err.Error())
+	}
 	r := mux.NewRouter()
 	r.Handle("/v1/bid", bidderController.BidHandler()).Methods("POST")
 

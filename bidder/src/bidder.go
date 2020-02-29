@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/mridul-sahu/greedy_auction/models"
 )
 
@@ -15,6 +16,7 @@ type Bidder struct {
 	responseDelay time.Duration
 	id            string
 	endpoint      string
+	client        *http.Client
 }
 
 func (b *Bidder) BidHandler() http.Handler {
@@ -41,6 +43,23 @@ func (b *Bidder) BidHandler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		w.Write(resp)
 	})
+}
+
+func (b *Bidder) register(endpoint string) error {
+	return nil
+}
+
+// This tries to registers and return a bidder, returns error if registeration fails.
+func NewBidder(registerationEndpoint string, bidEndpoint string, responseDelay time.Duration) (*Bidder, error) {
+	ret := &Bidder{
+		responseDelay: responseDelay,
+		id:            uuid.New().String(),
+		endpoint:      bidEndpoint,
+		client: &http.Client{
+			Timeout: time.Second * 5,
+		},
+	}
+	return ret, ret.register(registerationEndpoint)
 }
 
 // Utility Func for json body to type. Not responsible to close body.
