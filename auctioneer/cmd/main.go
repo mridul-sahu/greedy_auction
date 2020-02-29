@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	auctioneer "github.com/mridul-sahu/greedy_auction/auctioneer/src"
+	"github.com/sirupsen/logrus"
 
 	"github.com/jessevdk/go-flags"
 )
@@ -21,7 +22,7 @@ type Options struct {
 func main() {
 	var opts Options
 	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
-		panic(err.Error())
+		logrus.WithError(err).Fatalln("Could not parse input flags")
 	}
 	auctionController := auctioneer.Auctioneer{}
 	r := mux.NewRouter()
@@ -31,6 +32,6 @@ func main() {
 
 	allowedMethods := handlers.AllowedMethods([]string{"GET", "POST"})
 	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", opts.Host, opts.Port), handlers.CORS(allowedMethods)(r)); err != nil {
-		panic(err.Error())
+		logrus.WithError(err).Fatalln("ListenAndServe Failed")
 	}
 }
