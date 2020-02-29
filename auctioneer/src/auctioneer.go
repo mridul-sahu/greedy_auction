@@ -70,13 +70,42 @@ func (ac *Auctioneer) RegisterHandler() http.Handler {
 	})
 }
 
-func (act *Auctioneer) ListHandler() http.Handler {
+func (ac *Auctioneer) ListHandler() http.Handler {
+	listHandlerLogger := ac.logger.WithField("operation", "list-handler")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotImplemented)
+		listHandlerLogger.Debugln("Getting Bidder Configs")
+
+		ac.activeBiddersLock.RLock()
+		listHandlerLogger.Traceln("Got Active Bidders Read Lock")
+		n := len(ac.activeBidders)
+		bidderConfigs := make([]*models.BidderConfig, n)
+		i := 0
+		for bidderID, endpoint := range ac.activeBidders {
+			bidderConfigs[i] = &models.BidderConfig{
+				ID:       bidderID,
+				Endpoint: endpoint,
+			}
+			i++
+		}
+		ac.activeBiddersLock.RUnlock()
+		listHandlerLogger.Traceln("Active Bidders Read Unlock")
+
+		resp, err := json.Marshal(&models.ListBiddersResponse{
+			BidderConfigs: bidderConfigs,
+		})
+		if err != nil {
+			// Shouldn't happen, but just in case.
+			listHandlerLogger.WithError(err).Errorln("Error Marshalling ListBiddersResponse to JSON")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(resp)
+		listHandlerLogger.Debugf("Sent List(%d) of Bidder Configs\n", n)
 	})
 }
 
-func (act *Auctioneer) BidHandler() http.Handler {
+func (ac *Auctioneer) BidHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotImplemented)
 	})
