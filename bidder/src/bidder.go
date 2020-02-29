@@ -1,7 +1,9 @@
 package bidder
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mridul-sahu/greedy_auction/models"
+	"github.com/sirupsen/logrus"
 )
 
 type Bidder struct {
@@ -17,6 +20,8 @@ type Bidder struct {
 	id            string
 	endpoint      string
 	client        *http.Client
+
+	logger *logrus.Entry
 }
 
 func (b *Bidder) BidHandler() http.Handler {
@@ -46,18 +51,82 @@ func (b *Bidder) BidHandler() http.Handler {
 }
 
 func (b *Bidder) register(endpoint string) error {
-	return nil
+	registrationLogger := b.logger.WithField("register_endpoint", endpoint)
+
+	bidderConfigBytes, err := json.Marshal(&models.BidderConfig{
+		ID:       b.id,
+		Endpoint: b.endpoint,
+	})
+	if err != nil {
+		// Shouldn't happen, but just in case something goes wrong.
+		registrationLogger.WithError(err).Errorln("Error Marshalling BidderConfig")
+		return err
+	}
+
+	delay := 1
+
+	// Trying exponential backoff. Maybe control this from args.
+	for {
+		registrationLogger.Infoln("Trying to register")
+
+		request, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(bidderConfigBytes))
+		if err != nil {
+			// Shouldn't happen normally, something is wrong, don't want to try again.
+			registrationLogger.WithError(err).Errorln("Error Forming Request")
+			return err
+		}
+
+		registrationLogger.Debugln("Sending Request")
+		resp, err := b.client.Do(request)
+		if err != nil {
+			if delay >= 64 {
+				break
+			}
+			registrationLogger.WithError(err).Errorln("Error Registering Bidder")
+			registrationLogger.Debugf("Sleeping for %d seconds\n", delay)
+			time.Sleep(time.Duration(delay) * time.Second)
+
+			delay *= 2
+			continue
+		}
+
+		// Got a response.
+		defer resp.Body.Close()
+
+		var registerResponse *models.RegisterBidderResponse
+		if err := valueFromBody(resp.Body, &registerResponse); err != nil {
+			registrationLogger.WithError(err).Errorln("Invalid Response")
+			return err
+		}
+
+		if !registerResponse.Success {
+			// Not allowed to register. Maybe try again. TODO:- decide to try again.
+			err := errors.New(registerResponse.Error)
+			registrationLogger.WithError(err).Errorln("Error Registering Bidder")
+			return err
+		}
+		// Maybe store this if needed.
+		registrationLogger.Infof("Bidder Registered at time: %v\n", registerResponse.RegisteredAt)
+		return nil
+	}
+
+	err = errors.New("Maximum Reties Reached")
+	registrationLogger.WithError(err).Errorln("Error Registering Bidder")
+	return err
 }
 
 // This tries to registers and return a bidder, returns error if registeration fails.
-func NewBidder(registerationEndpoint string, bidEndpoint string, responseDelay time.Duration) (*Bidder, error) {
+func NewBidder(registerationEndpoint string, bidEndpoint string, responseDelay time.Duration, logger *logrus.Logger) (*Bidder, error) {
+	bidderID := uuid.New().String()
 	ret := &Bidder{
 		responseDelay: responseDelay,
-		id:            uuid.New().String(),
+		id:            bidderID,
 		endpoint:      bidEndpoint,
 		client: &http.Client{
 			Timeout: time.Second * 5,
 		},
+
+		logger: logger.WithField("entity", "bidder").WithField("bidder_id", bidderID),
 	}
 	return ret, ret.register(registerationEndpoint)
 }
