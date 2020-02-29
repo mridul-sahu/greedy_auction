@@ -1,5 +1,35 @@
 package main
 
-func main() {
+import (
+	"fmt"
+	"net/http"
+	"os"
 
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
+	bidder "github.com/mridul-sahu/greedy_auction/bidder/src"
+
+	"github.com/jessevdk/go-flags"
+)
+
+type Options struct {
+	Host       string `short:"h" long:"host" description:"Bidder Host" default:"localhost"`
+	Port       int    `short:"p" long:"port" description:"Bidder Port" default:"8001"`
+	Delay      int    `long:"delay" description:"Maximum delay(ms) to repond" default:"10"`
+	RegisterAt string `long:"register-at" description:"Registeration Endpoint" default:"http://localhost:8000/v1/register"`
+}
+
+func main() {
+	var opts Options
+	if _, err := flags.ParseArgs(&opts, os.Args); err != nil {
+		panic(err.Error())
+	}
+	bidderController := bidder.Bidder{}
+	r := mux.NewRouter()
+	r.Handle("/v1/bid", bidderController.BidHandler()).Methods("POST")
+
+	allowedMethods := handlers.AllowedMethods([]string{"POST"})
+	if err := http.ListenAndServe(fmt.Sprintf("%s:%d", opts.Host, opts.Port), handlers.CORS(allowedMethods)(r)); err != nil {
+		panic(err.Error())
+	}
 }
